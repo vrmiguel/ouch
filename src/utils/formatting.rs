@@ -1,51 +1,16 @@
-use std::{borrow::Cow, cmp, fmt::Display, path::Path};
+use std::{borrow::Cow, cmp, ffi::OsStr, path::Path};
 
 use crate::CURRENT_DIRECTORY;
 
-/// Converts invalid UTF-8 bytes to the Unicode replacement codepoint (�) in its Display implementation.
-pub struct EscapedPathDisplay<'a> {
-    path: &'a Path,
-}
-
-impl<'a> EscapedPathDisplay<'a> {
-    pub fn new(path: &'a Path) -> Self {
-        Self { path }
-    }
-}
-
-#[cfg(unix)]
-impl Display for EscapedPathDisplay<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use std::os::unix::prelude::OsStrExt;
-
-        let bstr = bstr::BStr::new(self.path.as_os_str().as_bytes());
-
-        write!(f, "{bstr}")
-    }
-}
-
-#[cfg(windows)]
-impl Display for EscapedPathDisplay<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use std::{char, fmt::Write, os::windows::prelude::OsStrExt};
-
-        let utf16 = self.path.as_os_str().encode_wide();
-        let chars = char::decode_utf16(utf16).map(|decoded| decoded.unwrap_or(char::REPLACEMENT_CHARACTER));
-
-        for char in chars {
-            f.write_char(char)?;
-        }
-
-        Ok(())
-    }
-}
-
 /// Converts an OsStr to utf8 with custom formatting.
 ///
-/// This is different from [`Path::display`].
-///
-/// See <https://gist.github.com/marcospb19/ebce5572be26397cf08bbd0fd3b65ac1> for a comparison.
-pub fn to_utf(os_str: &Path) -> Cow<str> {
+/// This is different from [`Path::display`], see
+/// <https://gist.github.com/marcospb19/ebce5572be26397cf08bbd0fd3b65ac1> for a comparison.
+pub fn path_to_str(path: &Path) -> Cow<str> {
+    os_str_to_str(path.as_ref())
+}
+
+pub fn os_str_to_str(os_str: &OsStr) -> Cow<str> {
     let format = || {
         let text = format!("{os_str:?}");
         Cow::Owned(text.trim_matches('"').to_string())
@@ -65,15 +30,15 @@ pub fn strip_cur_dir(source_path: &Path) -> &Path {
 /// Converts a slice of `AsRef<OsStr>` to comma separated String
 ///
 /// Panics if the slice is empty.
-pub fn pretty_format_list_of_paths(os_strs: &[impl AsRef<Path>]) -> String {
-    let mut iter = os_strs.iter().map(AsRef::as_ref);
+pub fn pretty_format_list_of_paths(paths: &[impl AsRef<Path>]) -> String {
+    let mut iter = paths.iter().map(AsRef::as_ref);
 
-    let first_element = iter.next().unwrap();
-    let mut string = to_utf(first_element).into_owned();
+    let first_path = iter.next().unwrap();
+    let mut string = path_to_str(first_path).into_owned();
 
-    for os_str in iter {
+    for path in iter {
         string += ", ";
-        string += &to_utf(os_str);
+        string += &path_to_str(path);
     }
     string
 }
@@ -83,7 +48,7 @@ pub fn nice_directory_display(path: &Path) -> Cow<str> {
     if path == Path::new(".") {
         Cow::Borrowed("current directory")
     } else {
-        to_utf(path)
+        path_to_str(path)
     }
 }
 
